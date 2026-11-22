@@ -1,0 +1,865 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Customer Birthday Reminder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@500;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: one-column agenda. Sticky header + tabs, then one card per customer to greet. */
+:root{
+  --bg:#F4F5F8; --surface:#FFFFFF; --sunk:#EEF0F4; --ink:#17202B; --muted:#5B6474; --line:#DFE3EA;
+  --accent:#C2264E; --accent-ink:#FFFFFF; --accent-soft:#FBE6EC;
+  --wa:#1B8F49; --wa-ink:#FFFFFF;
+  --warn:#9A5B00; --warn-soft:#FFF1D6; --ok:#1C7347; --ok-soft:#E1F3E8; --bad:#B3261E; --bad-soft:#FCE4E2;
+  --font-display:"Outfit","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --font-body:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-cn:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11151B; --surface:#1A2029; --sunk:#141920; --ink:#E8ECF2; --muted:#9BA4B3; --line:#2B333F;
+  --accent:#EE6386; --accent-ink:#1A0B10; --accent-soft:#3A1C26;
+  --wa:#3CC873; --wa-ink:#0B1F12;
+  --warn:#F3B65B; --warn-soft:#382A12; --ok:#58CC8C; --ok-soft:#16301F; --bad:#FF8A80; --bad-soft:#3A1A18;
+  color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#11151B; --surface:#1A2029; --sunk:#141920; --ink:#E8ECF2; --muted:#9BA4B3; --line:#2B333F;
+  --accent:#EE6386; --accent-ink:#1A0B10; --accent-soft:#3A1C26;
+  --wa:#3CC873; --wa-ink:#0B1F12;
+  --warn:#F3B65B; --warn-soft:#382A12; --ok:#58CC8C; --ok-soft:#16301F; --bad:#FF8A80; --bad-soft:#3A1A18;
+  color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:12px 8px;flex-wrap:wrap}
+.brand h1{font-family:var(--font-display);font-weight:700;font-size:20px;margin:0;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.brand h1 .dot{width:22px;height:22px;border-radius:50%;background:var(--accent);display:inline-grid;place-items:center;color:var(--accent-ink);font-size:12px}
+.today{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.today b{color:var(--ink);font-weight:600}
+.sync{font-size:12px;color:var(--muted)}
+.sync[data-mode="synced"]{color:var(--ok)}
+.sync[data-mode="error"],.sync[data-mode="offline"]{color:var(--warn)}
+.zh{font-family:var(--font-cn);font-weight:500;opacity:.8;margin-left:4px}
+.pol{font-size:12.5px;color:var(--muted)}
+.pol b{color:var(--ink);font-weight:600}
+.testpill{background:var(--warn-soft);color:var(--warn);border-radius:99px;padding:2px 10px;font-size:12px;font-weight:600}
+nav.tabs{display:flex;gap:4px;overflow-x:auto;padding-block:0 8px;scrollbar-width:none}
+nav.tabs::-webkit-scrollbar{display:none}
+nav.tabs button{flex:0 0 auto;border:0;background:transparent;color:var(--muted);font:500 14px var(--font-body);padding:7px 12px;border-radius:99px;cursor:pointer;display:flex;gap:6px;align-items:center}
+nav.tabs button[aria-selected="true"]{background:var(--ink);color:var(--surface)}
+.badge{min-width:20px;height:20px;border-radius:99px;font-size:11px;font-weight:700;display:inline-grid;place-items:center;padding:0 6px;background:var(--accent);color:var(--accent-ink)}
+.badge.warn{background:var(--warn);color:var(--surface)}
+main{padding-block:18px 60px}
+h2{font-family:var(--font-display);font-size:22px;font-weight:600;margin:0 0 4px;text-wrap:balance}
+h3{font-family:var(--font-display);font-size:19px;font-weight:600;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:0 0 16px;font-size:14px}
+.section{display:grid;gap:14px;margin-bottom:28px}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 0 -4px}
+.banner{border-radius:var(--r);padding:12px 14px;font-size:14px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.banner.info{background:var(--accent-soft)}
+.banner.warn{background:var(--warn-soft);color:var(--ink)}
+.banner.ok{background:var(--ok-soft)}
+.banner .grow{flex:1 1 220px;min-width:0}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 14px var(--font-body);padding:9px 14px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;min-height:42px}
+.btn:hover{border-color:var(--muted)}
+.btn:focus-visible,nav.tabs button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,.seg button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.wa{background:var(--wa);color:var(--wa-ink);border-color:var(--wa);font-weight:600}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.small{min-height:34px;padding:5px 10px;font-size:13px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cust{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:14px}
+.cust.missed{border-left:4px solid var(--warn)}
+.cust.done{opacity:.75}
+.cust-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.cust-head>div{min-width:0}
+.meta{color:var(--muted);font-size:13px;margin:2px 0 0}
+.pill{border-radius:99px;padding:3px 10px;font-size:12.5px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pill.due{background:var(--accent-soft);color:var(--accent)}
+.pill.today{background:var(--accent);color:var(--accent-ink)}
+.pill.missed{background:var(--warn-soft);color:var(--warn)}
+.pill.sent{background:var(--ok-soft);color:var(--ok)}
+.cust-body{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:14px}
+@media (max-width:560px){.cust-body{grid-template-columns:minmax(0,1fr)}.cardimg{max-width:280px}}
+.cardimg{width:100%;aspect-ratio:1;border-radius:12px;display:block;background:var(--sunk);max-width:100%}
+.seg{display:inline-flex;background:var(--sunk);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;color:var(--muted);font:500 13px var(--font-body);padding:5px 10px;border-radius:8px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+textarea,input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%}
+textarea.msg{min-height:190px;resize:vertical;font-family:var(--font-body),var(--font-cn);font-size:14px;line-height:1.55}
+.contact{font-size:13.5px;display:grid;gap:3px}
+.contact .miss{color:var(--warn)}
+.confirm{background:var(--sunk);border-radius:12px;padding:12px;display:grid;gap:10px;font-size:14px}
+.confirm dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0}
+.confirm dt{color:var(--muted)}
+.confirm dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.list{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.li{display:flex;gap:12px;align-items:center;padding:11px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.li:first-child{border-top:0}
+.li .when{width:72px;flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.li .who{flex:1 1 180px;min-width:0}
+.li .who small{display:block;color:var(--muted);font-size:12.5px;overflow-wrap:anywhere}
+.issue{font-size:12.5px;border-radius:6px;padding:1px 7px;display:inline-block;margin:2px 4px 0 0}
+.issue.block{background:var(--bad-soft);color:var(--bad)}
+.issue.soft{background:var(--warn-soft);color:var(--warn)}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.form{grid-template-columns:minmax(0,1fr)}}
+.form label{display:grid;gap:4px;font-size:13px;font-weight:500;color:var(--muted)}
+.form .full{grid-column:1/-1}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:12px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;border-top:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:var(--sunk);font-weight:600;border-top:0}
+.empty{text-align:center;padding:28px 16px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:var(--r)}
+.empty strong{display:block;color:var(--ink);font-family:var(--font-display);font-size:18px;margin-bottom:4px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+.guide ol{padding-left:20px;margin:0;display:grid;gap:8px}
+.cn{font-family:var(--font-cn)}
+@media (prefers-reduced-motion:no-preference){.cust,.panel{animation:rise .25s ease both}@keyframes rise{from{transform:translateY(4px)}to{transform:none}}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1><span class="dot" aria-hidden="true">✦</span>Customer Birthday Reminder</h1>
+      <div style="display:grid;justify-items:end;gap:2px"><div class="today" id="todayLabel"></div><div class="sync" id="syncLabel" data-mode="local"></div></div>
+    </div>
+    <nav class="tabs" role="tablist" id="tabs"></nav>
+  </div>
+</header>
+<main class="wrap" id="main" aria-live="polite"></main>
+<input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.json,image/*" hidden>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+"use strict";
+/* ---------------- storage ---------------- */
+const KEY="cbr.v1";
+const DEFAULT_SETTINGS={senderName:"Ang Siaw Peng",companyEn:"Great Eastern Life",companyCn:"大东方人寿",countryCode:"60",remindDays:7,reminderTime:"08:00",dateFormat:"DMY",defaultLang:"both",testDate:""};
+let S=null; // state
+function loadState(){
+  try{const raw=localStorage.getItem(KEY); if(raw){const s=JSON.parse(raw); s.settings=Object.assign({},DEFAULT_SETTINGS,s.settings||{}); s.sent=s.sent||{}; s.drafts=s.drafts||{}; s.variant=s.variant||{}; s.lang=s.lang||{}; return s;}}catch(e){}
+  return exampleState();
+}
+function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function save(){saveLocal();if(DB&&dbReady)queueSync();}
+
+/* ---------------- cloud sync (db) ---------------- */
+let DB=null,dbReady=false,lastSnap=null,lastState=null,liveClients=false,liveState=false,synced=new Map(),syncedState=null,syncing=false,syncAgain=false,pendingRender=false;
+const CFIELDS=["name","company","birthday","phone","email","manager","note","verified","policies"];
+function clientDoc(c){const o={};for(const k of CFIELDS)if(c[k]!==undefined&&c[k]!==null)o[k]=c[k];return o;}
+function stateDoc(){return {settings:S.settings,sent:S.sent,lang:S.lang,variant:S.variant};}
+const SYNC_TEXT={local:"Saved on this device only · 仅保存在本机",loading:"Connecting… · 连接中",saving:"Saving… · 保存中",synced:"✓ Synced on all devices · 已同步",error:"⚠ Not synced · 未同步",offline:"⚠ Can't reach cloud yet · 暂时无法连接"};
+let syncMode="local",syncExtra="";
+function setSync(m,extra){syncMode=m;syncExtra=extra||"";const el=document.getElementById("syncLabel");if(el){el.textContent=SYNC_TEXT[m]+(syncExtra?" "+syncExtra:"");el.dataset.mode=m;}}
+async function queueSync(){
+  if(syncing){syncAgain=true;return;}
+  syncing=true;setSync("saving");
+  try{
+    do{
+      syncAgain=false;
+      const cur=new Map(S.customers.map(c=>[c.id,JSON.stringify(clientDoc(c))]));
+      const ops=[];
+      for(const [id,j] of cur) if(synced.get(id)!==j) ops.push(["set",id,j]);
+      for(const id of [...synced.keys()]) if(!cur.has(id)) ops.push(["del",id]);
+      let n=0;
+      for(const op of ops){
+        const ref=DB.collection("clients").doc(op[1]);
+        if(op[0]==="set"){await ref.set(JSON.parse(op[2]));synced.set(op[1],op[2]);}
+        else{await ref.delete();synced.delete(op[1]);}
+        n++;if(ops.length>20&&n%10===0)setSync("saving",n+"/"+ops.length);
+      }
+      const st=JSON.stringify(stateDoc());
+      if(st!==syncedState){await DB.doc("app/state").set(JSON.parse(st));syncedState=st;}
+    }while(syncAgain);
+    setSync("synced");
+  }catch(e){
+    setSync("error");
+    toast(e&&e.code==="quota_exceeded"?"Cloud storage is full. Changes are kept on this device.":"Couldn't save to the cloud ("+((e&&e.code)||"error")+"). Changes are kept on this device.",6000);
+  }finally{syncing=false;applyRemote();}
+}
+function snapList(snap){return snap.docs.map(d=>Object.assign({id:d.id},JSON.parse(JSON.stringify(d.data()||{}))));}
+function applyRemote(){
+  if(syncing||!dbReady)return;
+  if(lastSnap){const list=snapList(lastSnap);synced=new Map(list.map(c=>[c.id,JSON.stringify(clientDoc(c))]));S.customers=list;S.isExample=false;cardCache.clear();}
+  if(lastState&&lastState.exists){const d=JSON.parse(JSON.stringify(lastState.data()));S.settings=Object.assign({},DEFAULT_SETTINGS,d.settings||{});S.sent=d.sent||{};S.lang=d.lang||{};S.variant=d.variant||{};syncedState=JSON.stringify(stateDoc());}
+  saveLocal();safeRender();
+}
+function firstLive(){
+  dbReady=true;
+  const remote=snapList(lastSnap);
+  synced=new Map(remote.map(c=>[c.id,JSON.stringify(clientDoc(c))]));
+  let migrated=false;try{migrated=localStorage.getItem(KEY+".migrated")==="1";}catch(e){}
+  const local=(S.isExample||migrated)?[]:S.customers;
+  const byKey=new Map(remote.map(c=>[normName(c.name)+"|"+c.birthday,c]));
+  const extra=[];
+  for(const c of local){const k=normName(c.name)+"|"+c.birthday;const r=byKey.get(k);
+    if(r){for(const f of ["phone","email","company"])if(!r[f]&&c[f])r[f]=c[f];if(S.sent)for(const sk in S.sent)if(sk.startsWith(c.id+"|"))S.sent[r.id+sk.slice(c.id.length)]=S.sent[sk];}
+    else extra.push(c);}
+  const remoteState=lastState&&lastState.exists?JSON.parse(JSON.stringify(lastState.data())):null;
+  const localSent=S.sent;
+  if(remoteState){S.settings=Object.assign({},DEFAULT_SETTINGS,remoteState.settings||{});S.sent=Object.assign({},localSent,remoteState.sent||{});S.lang=remoteState.lang||{};S.variant=remoteState.variant||{};syncedState=JSON.stringify(remoteState);}
+  S.customers=remote.concat(extra);S.isExample=false;cardCache.clear();
+  try{localStorage.setItem(KEY+".migrated","1");}catch(e){}
+  saveLocal();safeRender();queueSync();
+}
+function safeRender(){
+  const a=document.activeElement;
+  if(a&&a.closest&&a.closest("main")&&(a.tagName==="TEXTAREA"||(a.tagName==="INPUT"&&a.id!=="search"))){pendingRender=true;return;}
+  render();
+}
+document.addEventListener("focusout",()=>{if(pendingRender){pendingRender=false;setTimeout(()=>{if(!pendingRender)safeRender();},250);}});
+async function initDb(){
+  let db=null;try{db=window.claude&&window.claude.use?await window.claude.use("db"):null;}catch(e){db=null;}
+  if(!db){setSync("local");return;}
+  DB=db;setSync("loading");
+  const timer=setTimeout(()=>{if(!dbReady)setSync("offline");},10000);
+  const ready=()=>{if(!dbReady&&liveClients&&liveState){clearTimeout(timer);firstLive();}};
+  db.collection("clients").onSnapshot(snap=>{lastSnap=snap;if(!snap.metadata.fromCache)liveClients=true;if(dbReady)applyRemote();else ready();},err=>{clearTimeout(timer);setSync("error");});
+  db.doc("app/state").onSnapshot(snap=>{lastState=snap;if(!snap.metadata.fromCache)liveState=true;if(dbReady)applyRemote();else ready();},err=>{clearTimeout(timer);setSync("error");});
+}
+
+/* ---------------- dates ---------------- */
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTHS_FULL=["january","february","march","april","may","june","july","august","september","october","november","december"];
+const pad=n=>String(n).padStart(2,"0");
+const isLeap=y=>(y%4===0&&y%100!==0)||y%400===0;
+const dim=(y,m)=>[31,isLeap(y)?29:28,31,30,31,30,31,31,30,31,30,31][m-1];
+function today(){
+  const t=S&&S.settings.testDate;
+  if(t&&/^\d{4}-\d{2}-\d{2}$/.test(t)){const [y,m,d]=t.split("-").map(Number);return new Date(y,m-1,d);}
+  const n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate());
+}
+function ymdStr(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
+function fmtDay(d){return DOW[d.getDay()]+" "+d.getDate()+" "+MON[d.getMonth()];}
+function fmtLong(d){return fmtDay(d)+" "+d.getFullYear();}
+const MONTH_NAMES=["January","February","March","April","May","June","July","August","September","October","November","December"];
+function longDM(d){return d.getDate()+" "+MONTH_NAMES[d.getMonth()];}
+function fmtCn(d){return (d.getMonth()+1)+"月"+d.getDate()+"日";}
+/* birthday stored as "YYYY-MM-DD" or "--MM-DD" (year unknown) */
+function bParts(b){
+  if(!b) return null; let m=/^(\d{4}|-)-(\d{2})-(\d{2})$/.exec(b)||/^--(\d{2})-(\d{2})$/.exec(b);
+  if(!m) return null;
+  if(m.length===3) return {y:null,m:+m[1],d:+m[2]};
+  return {y:m[1]==="-"?null:+m[1],m:+m[2],d:+m[3]};
+}
+function validMD(y,m,d){return m>=1&&m<=12&&d>=1&&d<=(m===2?29:dim(2001,m))&&!(y&&m===2&&d===29&&!isLeap(y));}
+function toBStr(y,m,d){return (y?y:"-")+"-"+pad(m)+"-"+pad(d);}
+function parseDateAny(v,fmt){
+  if(v===null||v===undefined||v==="") return null;
+  if(v instanceof Date&&!isNaN(v)){const d=new Date(v.getTime()+12*3600e3);return {y:d.getFullYear(),m:d.getMonth()+1,d:d.getDate()};}
+  if(typeof v==="number"&&v>1000&&v<80000){const d=new Date(Math.round((v-25569)*864e5)+12*3600e3);return {y:d.getUTCFullYear(),m:d.getUTCMonth()+1,d:d.getUTCDate()};}
+  const s=String(v).trim(); let m;
+  if((m=/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/.exec(s))) return chk(+m[1],+m[2],+m[3]);
+  if((m=/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/.exec(s))){
+    let a=+m[1],b=+m[2],y=m[3].length===4?+m[3]:null;
+    return fmt==="MDY"?chk(y,a,b):chk(y,b,a);
+  }
+  if((m=/^(\d{1,2})\s*[- ]\s*([A-Za-z]{3,})\.?\s*[- ,]?\s*(\d{4})?$/.exec(s))){const mi=monIdx(m[2]);if(mi) return chk(m[3]?+m[3]:null,mi,+m[1]);}
+  if((m=/^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s*(\d{4})?$/.exec(s))){const mi=monIdx(m[1]);if(mi) return chk(m[3]?+m[3]:null,mi,+m[2]);}
+  return null;
+  function chk(y,mo,d){ if(y&&(y<1900||y>2100)) return null; return validMD(y,mo,d)?{y,m:mo,d}:null; }
+  function monIdx(t){t=t.toLowerCase();const i=MONTHS_FULL.findIndex(x=>x.startsWith(t.slice(0,3)));return i>=0?i+1:0;}
+}
+function occurrence(b,year){let d=b.d; if(b.m===2&&d===29&&!isLeap(year)) d=28; return new Date(year,b.m-1,d);}
+const dayDiff=(a,b)=>Math.round((a-b)/864e5);
+/* returns {date, days} where days in [-7, 358] (recent past kept for "missed") */
+function nextInfo(c,t){
+  const b=bParts(c.birthday); if(!b) return null;
+  let occ=occurrence(b,t.getFullYear()), days=dayDiff(occ,t);
+  if(days<-7){occ=occurrence(b,t.getFullYear()+1);days=dayDiff(occ,t);}
+  else if(days>358){const prev=occurrence(b,t.getFullYear()-1);const pd=dayDiff(prev,t);if(pd>=-7){occ=prev;days=pd;}}
+  return {date:occ,days,year:occ.getFullYear()};
+}
+function upcomingDays(c,t){const i=nextInfo(c,t);if(!i)return null;if(i.days<0){const o=occurrence(bParts(c.birthday),i.year+1);return {date:o,days:dayDiff(o,t),year:i.year+1};}return i;}
+
+/* ---------------- customers ---------------- */
+function titleCase(s){return String(s||"").trim().replace(/\s+/g," ").toLowerCase().replace(/(^|[\s\-'(\/])([a-z])/g,(m,a,b)=>a+b.toUpperCase());}
+function normName(s){return String(s||"").toLowerCase().replace(/[^a-z0-9㐀-鿿]/g,"");}
+function uid(){return "c"+Math.random().toString(36).slice(2,9);}
+function phoneInfo(p){
+  const raw=String(p||"").trim(); if(!raw) return {ok:false,empty:true,digits:""};
+  let digits=raw.replace(/\D/g,""); const cc=String(S.settings.countryCode||"").replace(/\D/g,"");
+  let note="";
+  if(raw.startsWith("+")){} else if(digits.startsWith("00")) digits=digits.slice(2);
+  else if(digits.startsWith("0")&&cc) digits=cc+digits.slice(1);
+  else if(cc&&digits.startsWith(cc)){} else note="No country code: check the number";
+  const ok=!note&&digits.length>=9&&digits.length<=15;
+  return {ok,empty:false,digits,note:note||(!ok?"Phone number looks incomplete":"")};
+}
+function issues(c){
+  const out=[];
+  if(!c.name||!c.name.trim()) out.push({t:"Name missing",block:true});
+  if(!bParts(c.birthday)) out.push({t:"Birthday missing or unreadable",block:true});
+  if(c.verified===false) out.push({t:"Confirm details read from photo",block:true});
+  const ph=phoneInfo(c.phone);
+  if(ph.empty&&!c.email) out.push({t:"No phone or email",block:false});
+  else if(!ph.empty&&!ph.ok) out.push({t:ph.note,block:false});
+  if(c.email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) out.push({t:"Email looks wrong",block:false});
+  return out;
+}
+const blocked=c=>issues(c).some(i=>i.block);
+
+/* ---------------- messages ---------------- */
+function hash(s){let h=2166136261;for(const ch of String(s)){h^=ch.codePointAt(0);h=Math.imul(h,16777619);}return h>>>0;}
+function signer(c){return (c.manager||S.settings.senderName||"").trim();}
+function messages(c,info){
+  const v=(hash(c.id+c.name)+(S.variant[c.id]||0))%3;
+  const kind=info.days===0?"today":info.days>0?"early":"late";
+  const name=c.name.trim(), who=signer(c), coEn=S.settings.companyEn.trim(), coCn=(S.settings.companyCn||S.settings.companyEn).trim();
+  const openEn={today:"Happy Birthday! \u{1F382}",early:"An early Happy Birthday for "+longDM(info.date)+"! \u{1F382}",late:"A belated Happy Birthday! \u{1F382} I hope you had a wonderful celebration on "+longDM(info.date)+"."}[kind];
+  const bodyEn=["Wishing you good health, happiness and a wonderful year ahead with your loved ones. Thank you for your trust and support.",
+    "May the year ahead be filled with good health, joy and success. It is a privilege to be part of your journey.",
+    "Here's to a healthy, happy and prosperous year ahead. Thank you for being a valued client."][v];
+  const openCn={today:"祝您生日快乐！\u{1F382}",early:"提前祝您"+fmtCn(info.date)+"生日快乐！\u{1F382}",late:"迟来的祝福：祝您生日快乐！\u{1F382}希望您在"+fmtCn(info.date)+"度过了美好的一天。"}[kind];
+  const bodyCn=["愿您新的一岁身体健康、幸福美满，与家人共度美好时光。感谢您一直以来的信任与支持。",
+    "愿您在新的一年里健康平安、万事如意、事事顺心。很荣幸能一路陪伴您。",
+    "祝您福寿安康、心想事成，新的一年更加精彩！感谢您对我们的支持与信任。"][v];
+  const signEn=["Warm regards,",who,coEn].filter(Boolean).join("\n");
+  const signCn=[who?(who+" 敬上"):"",coCn].filter(Boolean).join("\n");
+  const en="Dear "+name+",\n\n"+openEn+" "+bodyEn+"\n\n"+signEn;
+  const cn="亲爱的 "+name+"：\n\n"+openCn+bodyCn+(signCn?"\n\n"+signCn:"");
+  return {en,cn,both:en+"\n\n— — —\n\n"+cn,subject:"Happy Birthday, "+name+"! 生日快乐"};
+}
+function langOf(c){return S.lang[c.id]||S.settings.defaultLang||"both";}
+function msgFor(c,info){const d=S.drafts[c.id];const key=info.year+"|"+langOf(c);if(d&&d.key===key&&d.v===(S.variant[c.id]||0))return d.text;return messages(c,info)[langOf(c)];}
+function waUrl(c,text){const ph=phoneInfo(c.phone);return "https://wa.me/"+(ph.ok?ph.digits:"")+"?text="+encodeURIComponent(text);}
+function mailUrl(c,text,subject){return "mailto:"+encodeURIComponent(c.email||"")+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(text);}
+function gmailUrl(c,text,subject){return "https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(c.email||"")+"&su="+encodeURIComponent(subject)+"&body="+encodeURIComponent(text);}
+
+/* ---------------- card image ---------------- */
+const PALETTES=[
+  {a:"#C2264E",b:"#F28A5B",conf:["#FFE08A","#FFFFFF","#FFC2D1","#9BE7D8"]},
+  {a:"#14555E",b:"#2E9C8F",conf:["#FFD166","#FFFFFF","#F7A8B8","#BDE8FF"]},
+  {a:"#4B2A8C",b:"#D9468F",conf:["#FFE08A","#FFFFFF","#A6F0E0","#FFB3C7"]}
+];
+function rng(seed){let s=seed||1;return()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296;};}
+let fontsReady=null;
+function ensureFonts(){
+  if(!fontsReady){fontsReady=Promise.all(["700 80px Outfit","600 60px Outfit","500 30px Inter","700 80px 'Noto Sans SC'"].map(f=>document.fonts&&document.fonts.load(f,"Happy 生日快乐 Aa").catch(()=>null))).then(()=>null,()=>null);}
+  return Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]);
+}
+function fitFont(ctx,text,weight,family,max,maxW){let size=max;do{ctx.font=weight+" "+size+"px "+family;if(ctx.measureText(text).width<=maxW)break;size-=2;}while(size>20);return size;}
+function drawCard(c){
+  const W=1080,cv=document.createElement("canvas");cv.width=W;cv.height=W;const x=cv.getContext("2d");
+  const p=PALETTES[hash(c.id+c.name)%PALETTES.length], R=rng(hash(c.name)||7);
+  const g=x.createLinearGradient(0,0,W,W);g.addColorStop(0,p.a);g.addColorStop(1,p.b);x.fillStyle=g;x.fillRect(0,0,W,W);
+  // confetti
+  for(let i=0;i<90;i++){x.save();x.globalAlpha=.35+R()*.5;x.fillStyle=p.conf[i%p.conf.length];const cx=R()*W,cy=R()*W;x.translate(cx,cy);x.rotate(R()*Math.PI);
+    if(i%3===0){x.beginPath();x.arc(0,0,5+R()*8,0,Math.PI*2);x.fill();}else x.fillRect(-4,-11,8+R()*6,18+R()*10);x.restore();}
+  // balloons
+  const balloons=[[150,250,p.conf[0]],[245,190,"#FFFFFF"],[870,215,p.conf[2]],[960,300,p.conf[3]]];
+  for(const [bx,by,col] of balloons){x.strokeStyle="rgba(255,255,255,.7)";x.lineWidth=3;x.beginPath();x.moveTo(bx,by+78);x.bezierCurveTo(bx-20,by+150,bx+25,by+200,bx,by+270);x.stroke();
+    x.fillStyle=col;x.beginPath();x.ellipse(bx,by,58,76,0,0,Math.PI*2);x.fill();x.fillStyle="rgba(255,255,255,.45)";x.beginPath();x.ellipse(bx-20,by-28,12,20,-.5,0,Math.PI*2);x.fill();
+    x.fillStyle=col;x.beginPath();x.moveTo(bx-10,by+80);x.lineTo(bx+10,by+80);x.lineTo(bx,by+70);x.fill();}
+  // panel
+  const px=110,py=330,pw=860,ph=600,r=42;
+  x.fillStyle="rgba(255,255,255,.95)";x.beginPath();x.moveTo(px+r,py);x.arcTo(px+pw,py,px+pw,py+ph,r);x.arcTo(px+pw,py+ph,px,py+ph,r);x.arcTo(px,py+ph,px,py,r);x.arcTo(px,py,px+pw,py,r);x.fill();
+  x.textAlign="center";x.textBaseline="alphabetic";
+  x.fillStyle=p.a;x.font="700 96px Outfit, 'Avenir Next', sans-serif";x.fillText("Happy Birthday",W/2,py+140);
+  x.font="700 92px 'Noto Sans SC','PingFang SC',sans-serif";x.fillText("生日快乐",W/2,py+258);
+  x.fillStyle="#17202B";const nm=c.name.trim();fitFont(x,nm,"600","Outfit, 'Avenir Next', sans-serif",66,pw-90);x.fillText(nm,W/2,py+372);
+  x.strokeStyle=p.b;x.lineWidth=4;x.beginPath();x.moveTo(W/2-70,py+412);x.lineTo(W/2+70,py+412);x.stroke();
+  x.fillStyle="#5B6474";x.font="500 30px Inter, sans-serif";
+  x.fillText("Wishing you good health & happiness",W/2,py+470);
+  x.font="500 30px 'Noto Sans SC','PingFang SC',sans-serif";x.fillText("身体健康 · 万事如意",W/2,py+515);
+  const who=signer(c),co=S.settings.companyEn.trim();
+  if(who||co){x.fillStyle="rgba(0,0,0,.22)";x.fillRect(0,962,W,74);x.fillStyle="#FFFFFF";x.font="500 32px Inter, sans-serif";const line="With warm wishes from "+[who,co].filter(Boolean).join(" · ");fitFont(x,line,"500","Inter, sans-serif",32,W-120);x.fillText(line,W/2,1010);}
+  return cv;
+}
+const cardCache=new Map();
+function cardKey(c){return [c.id,c.name,signer(c),S.settings.companyEn].join("|");}
+async function cardDataUrl(c){await ensureFonts();const k=cardKey(c);if(!cardCache.has(k))cardCache.set(k,drawCard(c).toDataURL("image/png"));return cardCache.get(k);}
+
+/* ---------------- downloads ---------------- */
+let dlNS; async function downloadsNS(){if(dlNS!==undefined)return dlNS;try{dlNS=window.claude&&window.claude.use?await window.claude.use("downloads"):null;}catch(e){dlNS=null;}return dlNS;}
+async function saveFile(filename,blob){
+  const ns=await downloadsNS();
+  if(ns){try{await ns.save({filename,data:blob});toast("Saved "+filename);return true;}catch(e){if(e&&e.code==="declined"){toast("Download cancelled");return false;}toast("Couldn't save the file here ("+(e&&e.code||"error")+")");return false;}}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);toast("Downloading "+filename);return true;
+}
+
+/* ---------------- PDF ---------------- */
+function wrapLines(ctx,text,maxW){
+  const out=[];
+  for(const para of String(text).split("\n")){
+    if(!para){out.push("");continue;}
+    const toks=para.match(/[⺀-鿿＀-￯　-〿]|[^\s⺀-鿿＀-￯　-〿]+|\s+/gu)||[];
+    let line="";
+    for(const t of toks){const test=line+t;if(ctx.measureText(test).width>maxW&&line.trim()){out.push(line.trimEnd());line=/^\s+$/.test(t)?"":t;}else line=test;}
+    out.push(line.trimEnd());
+  }
+  return out;
+}
+function rrect(x,X,Y,w,h,r){x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath();}
+function sendList(t){
+  const due=[],missed=[];
+  for(const c of S.customers){ if(blocked(c)) continue; const i=nextInfo(c,t); if(!i) continue;
+    const sent=S.sent[c.id+"|"+i.year];
+    if(i.days>=0&&i.days<=+S.settings.remindDays) due.push({c,info:i,sent});
+    else if(i.days<0&&i.days>=-7&&!sent) missed.push({c,info:i,sent});
+  }
+  due.sort((a,b)=>a.info.days-b.info.days||a.c.name.localeCompare(b.c.name));
+  missed.sort((a,b)=>b.info.days-a.info.days);
+  return {due,missed};
+}
+function whenText(days){return days===0?"Today":days===1?"Tomorrow":days>0?"In "+days+" days":(-days)+(days===-1?" day ago":" days ago");}
+async function buildPdf(items,t){
+  await ensureFonts();
+  const {jsPDF}=window.jspdf; const pdf=new jsPDF({unit:"pt",format:"a4",compress:true});
+  const W=1240,H=1754,PW=pdf.internal.pageSize.getWidth(),PH=pdf.internal.pageSize.getHeight(),k=PW/W;
+  const FB="Inter, 'Noto Sans SC', 'PingFang SC', sans-serif", FD="Outfit, 'Avenir Next', sans-serif", FC="'Noto Sans SC','PingFang SC',sans-serif";
+  const total=items.length;
+  const skipped=S.customers.filter(blocked).length;
+  function newCanvas(){const cv=document.createElement("canvas");cv.width=W;cv.height=H;const x=cv.getContext("2d");x.fillStyle="#FFFFFF";x.fillRect(0,0,W,H);return [cv,x];}
+  function band(x,title,right){x.fillStyle="#FBE6EC";x.fillRect(0,0,W,110);x.fillStyle="#C2264E";x.fillRect(0,106,W,4);x.fillStyle="#17202B";x.font="700 34px "+FD;x.textAlign="left";x.fillText(title,60,68);x.font="500 22px "+FB;x.textAlign="right";x.fillStyle="#5B6474";x.fillText(right,W-60,68);x.textAlign="left";}
+  function addPage(cv,first){if(window.__cbrPages)window.__cbrPages.push(cv.toDataURL("image/jpeg",0.75));if(!first)pdf.addPage();pdf.addImage(cv.toDataURL("image/jpeg",0.88),"JPEG",0,0,PW,PH);}
+  // summary page(s)
+  const perPage=20; let first=true;
+  for(let start=0;start<Math.max(total,1);start+=perPage){
+    const [cv,x]=newCanvas();
+    band(x,"Customer Birthday Reminder","List for "+fmtLong(t));
+    x.fillStyle="#17202B";x.font="600 44px "+FD;x.fillText(total?"Birthdays to greet: "+total:"No birthdays to greet",60,190);
+    x.font="400 24px "+FB;x.fillStyle="#5B6474";
+    x.fillText("Today and the next "+S.settings.remindDays+" days, plus any missed in the last 7 days. One page per customer follows.",60,235);
+    if(skipped) {x.fillStyle="#9A5B00";x.fillText(skipped+" customer"+(skipped>1?"s":"")+" left out until their details are fixed (see 'Needs checking' in the app).",60,272);}
+    const cols=[60,470,700,900];let y=330;
+    x.fillStyle="#EEF0F4";x.fillRect(50,y-36,W-100,54);x.fillStyle="#17202B";x.font="600 22px "+FB;
+    ["Customer","Birthday","When","Contact"].forEach((h,i)=>x.fillText(h,cols[i],y));
+    y+=58;
+    for(const it of items.slice(start,start+perPage)){
+      const ph=phoneInfo(it.c.phone);
+      x.font="500 23px "+FB;x.fillStyle="#17202B";
+      let nm=it.c.name;while(x.measureText(nm).width>390&&nm.length>4)nm=nm.slice(0,-2);if(nm!==it.c.name)nm+="…";
+      x.fillText(nm,cols[0],y);x.fillText(fmtDay(it.info.date),cols[1],y);
+      x.fillStyle=it.info.days<0?"#9A5B00":it.info.days===0?"#C2264E":"#17202B";x.fillText(whenText(it.info.days),cols[2],y);
+      x.fillStyle=(ph.ok||it.c.email)?"#17202B":"#9A5B00";x.fillText(ph.ok?"+"+ph.digits:(it.c.email?"Email only":"Pick chat in WhatsApp"),cols[3],y);
+      x.strokeStyle="#DFE3EA";x.lineWidth=2;x.beginPath();x.moveTo(50,y+22);x.lineTo(W-50,y+22);x.stroke();
+      y+=58;
+    }
+    addPage(cv,first);first=false;
+  }
+  // customer pages
+  let n=0;
+  for(const it of items){
+    n++;const c=it.c,info=it.info,m=messages(c,info),lang=langOf(c);
+    const text=msgFor(c,info);
+    const [cv,x]=newCanvas();
+    band(x,"Customer Birthday Reminder",fmtLong(t)+" · "+n+" of "+total);
+    x.fillStyle="#17202B";x.font="700 54px "+FD;fitFont(x,c.name,"700",FD,54,W-120);x.fillText(c.name,60,195);
+    const pill=(info.days<0?"Missed: ":"Birthday ")+fmtDay(info.date)+" · "+whenText(info.days);
+    x.font="600 24px "+FB;const pw=x.measureText(pill).width+36;x.fillStyle=info.days<0?"#FFF1D6":"#FBE6EC";rrect(x,60,222,pw,46,23);x.fill();
+    x.fillStyle=info.days<0?"#9A5B00":"#C2264E";x.fillText(pill,78,254);
+    const ph=phoneInfo(c.phone);
+    x.font="400 23px "+FB;x.fillStyle="#5B6474";
+    const det=[["Company",c.company||"—"],["Account manager",c.manager||S.settings.senderName||"—"],["WhatsApp",ph.ok?"+"+ph.digits:"Not saved — WhatsApp will ask you to pick the chat"],["Email",c.email||"Not saved"]];
+    let dy=315;for(const [a,b] of det){x.fillStyle="#5B6474";x.fillText(a,60,dy);x.fillStyle=(b.startsWith("Not saved"))?"#9A5B00":"#17202B";x.fillText(b,300,dy);dy+=36;}
+    // card
+    const card=drawCard(c);const cy=480,cs=500;x.save();rrect(x,60,cy,cs,cs,24);x.clip();x.drawImage(card,60,cy,cs,cs);x.restore();
+    // buttons
+    const bx=60,bw=cs,bh=86;let by=cy+cs+34;
+    x.fillStyle="#1B8F49";rrect(x,bx,by,bw,bh,16);x.fill();x.fillStyle="#FFFFFF";x.font="600 30px "+FB;x.textAlign="center";x.fillText("Send on WhatsApp  ›",bx+bw/2,by+55);
+    pdf._links=pdf._links||[];const links=[{x:bx,y:by,w:bw,h:bh,url:waUrl(c,text)}];
+    by+=bh+18;
+    if(c.email){x.fillStyle="#FFFFFF";x.strokeStyle="#17202B";x.lineWidth=3;rrect(x,bx,by,bw,bh,16);x.fill();x.stroke();x.fillStyle="#17202B";x.fillText("Send by Email  ›",bx+bw/2,by+55);links.push({x:bx,y:by,w:bw,h:bh,url:mailUrl(c,text,m.subject)});}
+    else{x.fillStyle="#EEF0F4";rrect(x,bx,by,bw,bh,16);x.fill();x.fillStyle="#8A92A0";x.font="500 26px "+FB;x.fillText("No email saved",bx+bw/2,by+53);}
+    x.textAlign="left";
+    // messages column
+    const mx=610,mw=W-mx-60;let my=500;
+    const blocks=lang==="en"?[["English",text,FB]]:lang==="cn"?[["中文",text,FC]]:[["English",m.en,FB],["中文 (Simplified)",m.cn,FC]];
+    if(lang==="both"&&S.drafts[c.id]&&S.drafts[c.id].text!==m.both){blocks.length=0;blocks.push(["Message (edited in app)",text,FB]);}
+    for(const [label,body,font] of blocks){
+      x.font="600 20px "+FB;x.fillStyle="#5B6474";x.fillText(label.toUpperCase(),mx,my);my+=16;
+      x.font="400 24px "+font;const lines=wrapLines(x,body,mw-40);const bh2=lines.length*35+36;
+      x.fillStyle="#F4F5F8";rrect(x,mx,my,mw,bh2,16);x.fill();x.fillStyle="#17202B";
+      let ly=my+44;for(const l of lines){x.fillText(l,mx+20,ly);ly+=35;}
+      my+=bh2+34;
+    }
+    // footer
+    x.font="400 21px "+FB;x.fillStyle="#5B6474";
+    const foot=wrapLines(x,"How to send: tap 'Send on WhatsApp'. WhatsApp opens with this message already typed"+(ph.ok?"":" (choose the customer's chat)")+". Attach the birthday card image (save it from the app), check the message, then press Send.",W-120);
+    let fy=H-60-foot.length*30;for(const l of foot){x.fillText(l,60,fy);fy+=30;}
+    addPage(cv,false);
+    for(const L of links) pdf.link(L.x*k,L.y*k,L.w*k,L.h*k,{url:L.url});
+  }
+  return pdf.output("blob");
+}
+
+/* ---------------- import ---------------- */
+const HEAD={
+  name:["customername","name","policyholder","clientname","client","customer","fullname","insuredname"],
+  company:["company","companyname","employer","organisation","organization","business"],
+  birthday:["birthday","dob","dateofbirth","birthdate","bday","dateofbirthddmmyyyy"],
+  phone:["phone","mobile","hp","handphone","phoneno","phonenumber","mobileno","mobilenumber","contactno","contact","tel","whatsapp","whatsappno"],
+  email:["email","emailaddress","mail","emailid"],
+  manager:["accountmanager","manager","agent","agentname","servicingagent","rm","relationshipmanager","advisor","adviser"]
+};
+function mapHeaders(row){
+  const norm=row.map(h=>String(h||"").toLowerCase().replace(/[^a-z]/g,""));const map={};
+  for(const f in HEAD){let i=norm.findIndex(h=>HEAD[f].includes(h));if(i<0)i=norm.findIndex(h=>h&&HEAD[f].some(k=>k.length>3&&h.includes(k)));if(i>=0&&!Object.values(map).includes(i))map[f]=i;}
+  return map;
+}
+function recordsFromRows(rows){
+  let hi=-1,map=null;
+  for(let i=0;i<Math.min(rows.length,20);i++){const m=mapHeaders(rows[i]);if(m.name!==undefined&&m.birthday!==undefined){hi=i;map=m;break;}}
+  if(hi<0) throw new Error("I couldn't find a header row with a name column and a birthday column. Check the first rows have headings like 'Customer Name' and 'Birthday'.");
+  const recs=[];
+  for(let i=hi+1;i<rows.length;i++){const r=rows[i];if(!r||r.every(v=>v===""||v==null))continue;
+    const get=f=>map[f]===undefined?"":r[map[f]];
+    recs.push({name:get("name"),company:get("company"),birthdayRaw:get("birthday"),phone:get("phone"),email:get("email"),manager:get("manager"),unclear:[],note:"Row "+(i+1)});}
+  return {recs,map};
+}
+function cleanRecords(recs){
+  const fmt=S.settings.dateFormat;const byKey=new Map();const out=[];let merged=0;
+  for(const r of recs){
+    const name=titleCase(r.name);
+    const p=parseDateAny(r.birthdayRaw,fmt);
+    const c={id:uid(),name,company:String(r.company||"").trim(),birthday:p?toBStr(p.y,p.m,p.d):"",phone:String(r.phone||"").trim(),email:String(r.email||"").trim().toLowerCase(),manager:titleCase(r.manager),verified:!(r.unclear&&r.unclear.some(u=>/name|birth/i.test(u))),note:r.note||""};
+    if(!p&&r.birthdayRaw!==""&&r.birthdayRaw!=null) c.note=(c.note?c.note+" · ":"")+"Birthday given as '"+String(r.birthdayRaw)+"' could not be read";
+    if(r.unclear&&r.unclear.length) c.note=(c.note?c.note+" · ":"")+"Unclear in photo: "+r.unclear.join(", ");
+    if(!name&&!c.birthday) continue;
+    const key=normName(name)+"|"+c.birthday;
+    if(name&&c.birthday&&byKey.has(key)){const e=byKey.get(key);merged++;["phone","email","company","manager"].forEach(f=>{if(!e[f]&&c[f])e[f]=c[f];});e.note=(e.note||"")+" · merged duplicate ("+(r.note||"")+")";continue;}
+    byKey.set(key,c);out.push(c);
+  }
+  return {list:out,merged};
+}
+let pending=null;
+async function importFile(file){
+  const name=file.name.toLowerCase();
+  try{
+    if(name.endsWith(".json")){
+      const data=JSON.parse(await file.text());
+      if(!data||!Array.isArray(data.customers)) throw new Error("This JSON file isn't a Customer Birthday Reminder backup.");
+      pending={kind:"backup",data,list:data.customers,merged:0,source:file.name};
+    } else if(/\.(xlsx|xls|csv)$/.test(name)){
+      if(!window.XLSX) throw new Error("The spreadsheet reader didn't load. Check your internet connection and try again.");
+      const isCsv=name.endsWith(".csv");
+      const wb=isCsv?XLSX.read(await file.text(),{type:"string",raw:true}):XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true});
+      const ws=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
+      const {recs}=recordsFromRows(rows);const {list,merged}=cleanRecords(recs);
+      pending={kind:"rows",list,merged,source:file.name};
+    } else if(file.type.startsWith("image/")){
+      await importPhoto(file); return;
+    } else throw new Error("Use an Excel (.xlsx), CSV, backup (.json) or photo (PNG/JPG) file. For a PDF, take a screenshot of each page and import the screenshots.");
+    view="customers";render();
+  }catch(e){toast(e.message||String(e),6000);}
+}
+async function shrink(file){
+  const img=await createImageBitmap(file);const max=2200,sc=Math.min(1,max/Math.max(img.width,img.height));
+  const cv=document.createElement("canvas");cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+  return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.9));
+}
+async function importPhoto(file){
+  let sample=null;try{sample=window.claude&&window.claude.use?await window.claude.use("sample"):null;}catch(e){}
+  const lim=sample?await sample.limits().catch(()=>null):null;
+  if(!sample||!lim||!lim.images){toast("Reading photos needs this app opened in Claude. Otherwise export your list to Excel or CSV and import that.",7000);return;}
+  busy="Reading your photo… this can take up to a minute.";render();
+  try{
+    const blob=await shrink(file);
+    const prompt="The image is a photo or screenshot of a customer list (it may be an insurance policy listing). Extract one entry per table row.\n"+
+    "Return JSON only: {\"agent_name\": string|null, \"rows\": [{\"row\": number|null, \"name\": string|null, \"company\": string|null, \"birthday\": string|null, \"phone\": string|null, \"email\": string|null, \"manager\": string|null, \"unclear\": string[]}]}.\n"+
+    "Rules: use the customer / policy holder name as name and their date of birth as birthday, copied exactly as printed (keep the original date format, e.g. 07/03/1980). "+
+    "Copy text exactly; never guess. If a cell is hidden, cut off, blurry or covered, set it to null or copy what is visible, and add the field name (\"name\" or \"birthday\" etc.) to unclear. "+
+    "Include rows that are partly hidden. Ignore policy numbers, premiums and payment details. If an agent name appears in the page header, return it as agent_name.";
+    const res=await sample.json(prompt,{images:[blob],modelTier:"complex"});
+    const rows=(res&&Array.isArray(res.rows))?res.rows:[];
+    const recs=rows.map(r=>({name:r.name||"",company:r.company||"",birthdayRaw:r.birthday||"",phone:r.phone||"",email:r.email||"",manager:r.manager||res.agent_name||"",unclear:Array.isArray(r.unclear)?r.unclear:[],note:"Photo row "+(r.row||"?")}));
+    const {list,merged}=cleanRecords(recs);
+    pending={kind:"rows",list,merged,source:file.name+" (read from photo; please check)"};
+    busy=null;view="customers";render();
+  }catch(e){busy=null;render();toast(e&&e.code==="not_granted"?"Photo reading was not allowed. You can import an Excel or CSV file instead.":"Couldn't read the photo ("+((e&&(e.code||e.message))||"error")+"). Try a sharper photo or an Excel file.",7000);}
+}
+function applyPending(mode){
+  if(!pending) return;
+  if(pending.kind==="backup"){const d=pending.data;S.customers=d.customers.map(c=>Object.assign({id:uid(),verified:true},c));if(mode==="replace"){S.settings=Object.assign({},DEFAULT_SETTINGS,d.settings||{});S.sent=d.sent||{};}S.isExample=false;}
+  else if(mode==="replace"){S.customers=pending.list;S.isExample=false;}
+  else{ if(S.isExample){S.customers=[];S.isExample=false;}
+    const keys=new Set(S.customers.map(c=>normName(c.name)+"|"+c.birthday));let skip=0;
+    for(const c of pending.list){const k=normName(c.name)+"|"+c.birthday;if(c.birthday&&keys.has(k)){skip++;continue;}S.customers.push(c);keys.add(k);}
+    if(skip) toast(skip+" already in your list were skipped");}
+  pending=null;cardCache.clear();save();render();toast("Customer list updated");
+}
+
+/* ---------------- example data ---------------- */
+function exampleState(){
+  const t=new Date();t.setHours(0,0,0,0);
+  const at=(off,y)=>{const d=new Date(t);d.setDate(d.getDate()+off);return toBStr(y,d.getMonth()+1,d.getDate());};
+  return {isExample:true,settings:Object.assign({},DEFAULT_SETTINGS),sent:{},drafts:{},variant:{},lang:{},
+    customers:[
+      {id:"ex1",name:"Tan Mei Ling",company:"Example Trading Sdn Bhd",birthday:at(1,1985),phone:"012-345 6789",email:"meiling@example.com",manager:"Your Name",verified:true,note:"Example"},
+      {id:"ex2",name:"Daniel Wong",company:"",birthday:at(3,1979),phone:"",email:"daniel.wong@example.com",manager:"Your Name",verified:true,note:"Example"},
+      {id:"ex3",name:"Siti Aminah",company:"Example Clinic",birthday:at(-2,1990),phone:"+60 13-222 8899",email:"",manager:"Your Name",verified:true,note:"Example"},
+      {id:"ex4",name:"Lim Kah Hooi",company:"",birthday:at(12,1968),phone:"016-777 1212",email:"",manager:"Your Name",verified:true,note:"Example"},
+      {id:"ex5",name:"Chloe Ng",company:"",birthday:"",phone:"011-1234 5678",email:"",manager:"Your Name",verified:true,note:"Example: birthday missing"}
+    ]};
+}
+
+/* ---------------- UI ---------------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+let view="send",busy=null,editing=null,confirmDel=null,confirmSend=null,opened={},confirmClear=false,search="";
+function toast(msg,ms){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,ms||2600);}
+function renderTabs(){
+  const t=today(),{due,missed}=sendList(t);const open=due.filter(d=>!d.sent).length+missed.length;const nc=S.customers.filter(blocked).length;
+  const tabs=[["send","Send now<span class=zh>发送</span>",open?`<span class="badge">${open}</span>`:""],["upcoming","Upcoming<span class=zh>即将到来</span>",""],["customers","Customers<span class=zh>客户</span>",""],["check","Needs checking<span class=zh>待检查</span>",nc?`<span class="badge warn">${nc}</span>`:""],["settings","Settings<span class=zh>设置</span>",""],["guide","How to use<span class=zh>说明</span>",""]];
+  $("#tabs").innerHTML=tabs.map(([k,l,b])=>`<button role="tab" data-view="${k}" aria-selected="${view===k}">${l}${b}</button>`).join("");
+  $("#todayLabel").innerHTML=(S.settings.testDate?`<span class="testpill">Test date</span> `:"")+`Today 今天: <b>${fmtLong(t)}</b>`;setSync(syncMode,syncExtra);
+}
+function render(){
+  renderTabs();
+  const m=$("#main");
+  if(busy){m.innerHTML=`<div class="empty"><strong>Working…</strong>${esc(busy)}</div>`;return;}
+  m.innerHTML={send:vSend,upcoming:vUpcoming,customers:vCustomers,check:vCheck,settings:vSettings,guide:vGuide}[view]();
+  hydrateCards();
+}
+function exampleBanner(){return S.isExample?`<div class="banner info"><div class="grow"><b>You're looking at example customers.</b> Import your own list (Excel, CSV, a backup file, or a photo) to start.</div><button class="btn small primary" data-act="import">Import my list</button></div>`:"";}
+function custCard(it){
+  const c=it.c,i=it.info,ph=phoneInfo(c.phone),lang=langOf(c),text=msgFor(c,i),sent=S.sent[c.id+"|"+i.year];
+  const pill=sent?`<span class="pill sent">Sent ${esc(sent.slice(5,10).split("-").reverse().join("/"))}</span>`:i.days<0?`<span class="pill missed">Missed · ${fmtDay(i.date)}</span>`:`<span class="pill ${i.days===0?"today":"due"}">${whenText(i.days)} · ${fmtDay(i.date)}</span>`;
+  const cs=confirmSend&&confirmSend.id===c.id?confirmSend:null;
+  let confirm="";
+  if(cs){
+    const isWa=cs.via==="wa";
+    confirm=`<div class="confirm" role="group" aria-label="Check before sending">
+      <b>Check before sending</b>
+      <dl><dt>To</dt><dd>${esc(c.name)}</dd>
+      <dt>${isWa?"WhatsApp":"Email"}</dt><dd>${isWa?(ph.ok?"+"+esc(ph.digits):"<span class='miss'>No number saved. WhatsApp will ask you to pick the chat.</span>"):esc(c.email)}</dd>
+      <dt>Language</dt><dd>${{both:"English + 中文",en:"English",cn:"中文"}[lang]}</dd></dl>
+      ${isWa?"<div>Tip: tap <b>Save card image</b> first, then attach it in the chat. The message is filled in for you.</div>":"<div>Your email app opens with the message filled in. Attach the saved card image if you'd like.</div>"}
+      <div class="row">${isWa?`<a class="btn wa" href="${esc(waUrl(c,text))}" target="_blank" rel="noopener" data-act="opened" data-id="${c.id}">Open WhatsApp</a>`:`<a class="btn primary" href="${esc(mailUrl(c,text,messages(c,i).subject))}" target="_blank" rel="noopener" data-act="opened" data-id="${c.id}">Open email app</a><a class="btn" href="${esc(gmailUrl(c,text,messages(c,i).subject))}" target="_blank" rel="noopener" data-act="opened" data-id="${c.id}">Open in Gmail</a>`}
+      <button class="btn" data-act="cancelsend">Cancel</button></div>
+      ${opened[c.id]?`<div class="row"><span>Did you send it?</span><button class="btn small primary" data-act="marksent" data-id="${c.id}" data-year="${i.year}">Yes, mark as sent</button></div>`:""}
+    </div>`;
+  }
+  return `<article class="cust ${i.days<0?"missed":""} ${sent?"done":""}" id="card-${c.id}">
+    <div class="cust-head"><div><h3>${esc(c.name)}</h3><p class="meta">${esc([c.company,polSummary(c)].filter(Boolean).join(" · ")||"—")}</p></div>${pill}</div>
+    <div class="cust-body">
+      <div style="display:grid;gap:8px;align-content:start"><img class="cardimg" data-card="${c.id}" alt="Birthday card for ${esc(c.name)}"><button class="btn small" data-act="savecard" data-id="${c.id}">Save card image · 保存贺卡</button></div>
+      <div style="display:grid;gap:10px;min-width:0">
+        <div class="row" style="justify-content:space-between"><div class="seg" role="group" aria-label="Message language">${["both","en","cn"].map(l=>`<button data-act="lang" data-id="${c.id}" data-lang="${l}" aria-pressed="${lang===l}">${{both:"Both",en:"English",cn:"中文"}[l]}</button>`).join("")}</div>
+        <button class="btn small" data-act="variant" data-id="${c.id}">Another wording · 换一个</button></div>
+        <label class="sr" for="msg-${c.id}" hidden>Message</label>
+        <textarea class="msg" id="msg-${c.id}" data-msg="${c.id}" data-year="${i.year}">${esc(text)}</textarea>
+        <div class="contact">${ph.ok?`<span>WhatsApp: +${esc(ph.digits)}</span>`:`<span class="miss">${ph.empty?"No phone saved: you'll pick the chat in WhatsApp. <a href='#' data-act='edit' data-id='"+c.id+"'>Add number</a>":esc(ph.note)}</span>`}${c.email?`<span>Email: ${esc(c.email)}</span>`:""}</div>
+        <div class="row"><button class="btn wa" data-act="send" data-via="wa" data-id="${c.id}">WhatsApp</button><button class="btn" data-act="send" data-via="mail" data-id="${c.id}" ${c.email?"":"disabled title='No email saved'"}>Email</button><button class="btn" data-act="copy" data-id="${c.id}">Copy · 复制</button>
+        ${sent?`<button class="btn small" data-act="unsent" data-id="${c.id}" data-year="${i.year}">Undo sent</button>`:""}</div>
+        ${confirm}
+      </div>
+    </div></article>`;
+}
+function vSend(){
+  const t=today(),{due,missed}=sendList(t),nc=S.customers.filter(blocked).length;
+  const items=[...due,...missed];
+  let h=exampleBanner()+`<div class="section"><div class="row" style="justify-content:space-between"><div><h2>Birthdays to greet<span class=zh>生日祝福</span></h2><p class="sub" style="margin:0">Today and the next ${S.settings.remindDays} days. Check each message, then send.</p></div>
+    <button class="btn primary" data-act="pdf" ${items.length?"":"disabled"}>Download PDF list</button></div>`;
+  if(nc) h+=`<div class="banner warn"><div class="grow">${nc} customer${nc>1?"s are":" is"} left out because a birthday or name needs checking. Nothing is guessed.</div><button class="btn small" data-view="check">Review</button></div>`;
+  if(!due.length&&!missed.length){
+    const nxt=S.customers.filter(c=>!blocked(c)).map(c=>({c,i:upcomingDays(c,t)})).filter(x=>x.i).sort((a,b)=>a.i.days-b.i.days)[0];
+    h+=`<div class="empty"><strong>No birthdays in the next ${S.settings.remindDays} days</strong>${nxt?`Next up: ${esc(nxt.c.name)} on ${fmtDay(nxt.i.date)} (in ${nxt.i.days} days). You'll see them here ${S.settings.remindDays} days before.`:"Import your customer list to get started."}</div>`;
+  }
+  if(due.length) h+=due.map(custCard).join("");
+  if(missed.length) h+=`<p class="label">Missed in the last 7 days</p>`+missed.map(custCard).join("");
+  return h+"</div>";
+}
+function fmtYmd(s){if(!s)return "";const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);return m?m[3]+"/"+m[2]+"/"+m[1]:esc(s);}
+function polSummary(c){const n=(c.policies||[]).length;return n?n+(n>1?" policies":" policy"):"";}
+function premiumsDue(t,days){const out=[];for(const c of S.customers)for(const p of c.policies||[]){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(p.due||"");if(!m)continue;const dt=new Date(+m[1],+m[2]-1,+m[3]);const n=dayDiff(dt,t);if(n>=0&&n<=days)out.push({c,p,dt,n});}return out.sort((a,b)=>a.n-b.n||a.c.name.localeCompare(b.c.name));}
+function premiumSection(t){
+  const list=premiumsDue(t,60);
+  let h=`<div class="section"><div><h2>Premiums due · next 60 days<span class=zh>保费到期</span></h2><p class="sub" style="margin:0">From the policy listing. Check the portal for the latest status.</p></div>`;
+  if(!list.length) return h+`<div class="empty"><strong>No premiums due in the next 60 days</strong>Only policies with a due date in your listing show here.</div></div>`;
+  return h+`<div class="list">`+list.map(x=>`<div class="li"><div class="when">${x.dt.getDate()} ${MON[x.dt.getMonth()]}</div><div class="who">${esc(x.c.name)}<small>Policy ${esc(x.p.no)}${x.p.la&&normName(x.p.la)!==normName(x.c.name)?" · for "+esc(x.p.la):""} · ${esc(x.p.mode||"")}${x.p.amount?" · RM "+esc(x.p.amount):""} · ${esc(x.p.method||"")}</small></div><span class="pill ${x.n<=7?"due":"sent"}">${x.n===0?"Today":x.n===1?"Tomorrow":"In "+x.n+" days"}</span></div>`).join("")+`</div></div>`;
+}
+function icsText(v){return String(v||"").replace(/\\/g,"\\\\").replace(/;/g,"\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");}
+function buildIcs(){
+  const t=today(),stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+Z$/,"Z");
+  const L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Customer Birthday Reminder//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:Client Birthdays 客户生日"];
+  let nb=0,np=0;
+  for(const c of S.customers){
+    if(blocked(c))continue;const b=bParts(c.birthday);if(!b)continue;
+    const occ=upcomingDays(c,t);const y=occ?occ.year:t.getFullYear();
+    const leap=b.m===2&&b.d===29;
+    const start=leap?""+y+"0228":""+y+pad(b.m)+pad(b.d);
+    L.push("BEGIN:VEVENT","UID:bday-"+normName(c.name)+"-"+pad(b.m)+pad(b.d)+"@birthday-reminder","DTSTAMP:"+stamp,"DTSTART;VALUE=DATE:"+start,
+      "RRULE:"+(leap?"FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1":"FREQ=YEARLY"),
+      "SUMMARY:"+icsText("🎂 "+c.name+" birthday · 生日"),
+      "DESCRIPTION:"+icsText("Open Customer Birthday Reminder to send the greeting."+(c.phone?"\nPhone: "+c.phone:"")),
+      "TRANSP:TRANSPARENT",
+      "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsText(c.name+"'s birthday is in 7 days"),"TRIGGER:-P6DT15H","END:VALARM",
+      "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsText("Today is "+c.name+"'s birthday"),"TRIGGER:PT9H","END:VALARM",
+      "END:VEVENT");nb++;
+  }
+  for(const x of premiumsDue(t,400)){
+    const d=x.dt,ds=""+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());
+    L.push("BEGIN:VEVENT","UID:prem-"+icsText(x.p.no)+"-"+ds+"@birthday-reminder","DTSTAMP:"+stamp,"DTSTART;VALUE=DATE:"+ds,
+      "SUMMARY:"+icsText("💰 Premium due · 保费到期: "+x.c.name+(x.p.amount?" (RM "+x.p.amount+")":"")),
+      "DESCRIPTION:"+icsText("Policy "+x.p.no+(x.p.mode?" · "+x.p.mode:"")+(x.p.method?" · "+x.p.method:"")),
+      "TRANSP:TRANSPARENT",
+      "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsText("Premium due in 3 days: "+x.c.name),"TRIGGER:-P2DT15H","END:VALARM",
+      "END:VEVENT");np++;
+  }
+  L.push("END:VCALENDAR");
+  return {text:L.join("\r\n")+"\r\n",nb,np};
+}
+function vUpcoming(){
+  const t=today();
+  const list=S.customers.filter(c=>!blocked(c)).map(c=>({c,i:upcomingDays(c,t)})).filter(x=>x.i&&x.i.days<=60).sort((a,b)=>a.i.days-b.i.days);
+  let h=exampleBanner()+`<div class="section"><div><h2>Birthdays · next 60 days<span class=zh>未来60天生日</span></h2><p class="sub">Each customer moves to <b>Send now</b> ${S.settings.remindDays} days before their birthday.</p></div>
+  <div class="banner info"><div class="grow"><b>Get reminders on your phone · 手机提醒</b><br>Adds every birthday (and premium due date) to your phone's calendar, with an alert 7 days before and at 9am on the day.</div><button class="btn small primary" data-act="ics">Add reminders to my calendar</button></div>`;
+  if(!list.length) return h+`<div class="empty"><strong>No birthdays in the next 60 days</strong>Add customers or check the Needs checking tab.</div></div>`+premiumSection(t);
+  h+=`<div class="list">`+list.map(x=>`<div class="li"><div class="when">${x.i.date.getDate()} ${MON[x.i.date.getMonth()]}</div><div class="who">${esc(x.c.name)}<small>${x.i.days===0?"Today":x.i.days===1?"Tomorrow":"In "+x.i.days+" days"}${x.c.company?" · "+esc(x.c.company):""}</small></div>${x.i.days<=S.settings.remindDays?`<button class="btn small primary" data-view="send">Send now</button>`:""}</div>`).join("")+`</div>`;
+  return h+"</div>"+premiumSection(t);
+}
+function editForm(c){
+  const b=bParts(c.birthday);const dv=b&&b.y?toBStr(b.y,b.m,b.d):"";
+  return `<form class="panel" id="editForm"><h3>${c._new?"Add customer":"Edit "+esc(c.name||"customer")}</h3>
+  ${c.note?`<div class="banner warn"><div class="grow">${esc(c.note)}</div></div>`:""}
+  <div class="form">
+    <label class="full">Customer name<input id="f-name" value="${esc(c.name)}" required></label>
+    <label>Birthday<input id="f-bday" type="date" value="${dv}"></label>
+    <label>Or day/month only (if year unknown)<input id="f-bdm" placeholder="e.g. 14/12" value="${b&&!b.y?pad(b.d)+"/"+pad(b.m):""}"></label>
+    <label>Phone (WhatsApp)<input id="f-phone" inputmode="tel" value="${esc(c.phone)}" placeholder="012-345 6789"></label>
+    <label>Email<input id="f-email" type="email" value="${esc(c.email)}"></label>
+    <label>Company<input id="f-company" value="${esc(c.company)}"></label>
+    <label>Account manager<input id="f-manager" value="${esc(c.manager)}"></label>
+  </div>
+  ${(c.policies||[]).length?`<div><p class="label" style="margin:0 0 6px">Policies 保单 (from listing)</p><div class="tablewrap"><table><thead><tr><th>Policy no.</th><th>Life assured</th><th>Start</th><th>Premium due</th><th>Amount</th><th>Mode</th><th>Method</th></tr></thead><tbody>${c.policies.map(p=>`<tr><td>${esc(p.no)}</td><td>${esc(p.la||"")}</td><td>${fmtYmd(p.start)}</td><td>${fmtYmd(p.due)||"—"}</td><td>${esc(p.amount||"—")}</td><td>${esc(p.mode||"")}</td><td>${esc(p.method||"")}</td></tr>`).join("")}</tbody></table></div></div>`:""}
+  <div class="row"><button class="btn primary" type="submit">Save${c.verified===false?" and mark as checked":""}</button><button class="btn" type="button" data-act="canceledit">Cancel</button></div></form>`;
+}
+function vCustomers(){
+  let h=exampleBanner();
+  if(pending){
+    const L=pending.list,bad=L.filter(blocked);
+    h+=`<div class="panel"><h3>Check before importing</h3><p class="sub" style="margin:0">From <b>${esc(pending.source)}</b>: ${L.length} customers${pending.merged?`, ${pending.merged} duplicate rows merged`:""}. ${bad.length?`<b>${bad.length} need checking</b> and won't get reminders until fixed.`:"All birthdays read correctly."}</p>
+    <div class="tablewrap"><table><thead><tr><th>Name</th><th>Birthday</th><th>Phone</th><th>Email</th><th>Status</th></tr></thead><tbody>${L.slice(0,12).map(c=>{const b=bParts(c.birthday);const is=issues(c);return `<tr><td>${esc(c.name)}</td><td>${b?pad(b.d)+"/"+pad(b.m)+(b.y?"/"+b.y:""):"—"}</td><td>${esc(c.phone)||"—"}</td><td>${esc(c.email)||"—"}</td><td>${is.length?is.map(x=>`<span class="issue ${x.block?"block":"soft"}">${esc(x.t)}</span>`).join(""):"OK"}</td></tr>`;}).join("")}</tbody></table></div>
+    ${L.length>12?`<p class="meta">…and ${L.length-12} more.</p>`:""}
+    <div class="row"><button class="btn primary" data-act="apply" data-mode="replace">Replace my list</button>${pending.kind==="rows"&&!S.isExample?`<button class="btn" data-act="apply" data-mode="add">Add to my list</button>`:""}<button class="btn" data-act="cancelimport">Cancel</button></div></div>`;
+  }
+  if(editing) return h+editForm(editing);
+  const q=search.toLowerCase();
+  const list=S.customers.filter(c=>!q||(c.name+" "+c.company+" "+c.phone+" "+c.email).toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
+  h+=`<div class="section"><div class="row" style="justify-content:space-between"><div><h2>Customers<span class=zh>客户</span></h2><p class="sub" style="margin:0">${S.customers.length} clients · ${DB&&dbReady?"synced on all your devices":"saved on this device"}</p></div>
+  <div class="row"><button class="btn primary" data-act="import">Import list</button><button class="btn" data-act="add">Add customer</button></div></div>
+  <input id="search" type="search" placeholder="Search name, company, phone…" value="${esc(search)}" aria-label="Search customers">
+  <div class="list">${list.map(c=>{const b=bParts(c.birthday);const is=issues(c);return `<div class="li"><div class="when">${b?b.d+" "+MON[b.m-1]:"—"}</div><div class="who">${esc(c.name)}<small>${esc([c.company,c.phone,c.email,polSummary(c)].filter(Boolean).join(" · ")||"No contact details")}</small>${is.map(x=>`<span class="issue ${x.block?"block":"soft"}">${esc(x.t)}</span>`).join("")}</div>
+   ${confirmDel===c.id?`<span class="row"><span style="font-size:13px">Delete ${esc(c.name)}?</span><button class="btn small danger" data-act="dodelete" data-id="${c.id}">Delete</button><button class="btn small" data-act="canceldel">Keep</button></span>`:`<span class="row"><button class="btn small" data-act="edit" data-id="${c.id}">Edit</button><button class="btn small" data-act="delete" data-id="${c.id}" aria-label="Delete ${esc(c.name)}">Delete</button></span>`}</div>`;}).join("")||`<div class="li">No customers match.</div>`}</div>
+  <div class="row"><button class="btn" data-act="backup">Download backup (.json)</button><button class="btn" data-act="csv">Download list (.csv)</button>
+  ${confirmClear?`<span class="row"><span>Remove all ${S.customers.length} customers from this device?</span><button class="btn danger" data-act="doclear">Remove all</button><button class="btn" data-act="cancelclear">Keep</button></span>`:`<button class="btn danger" data-act="clear">Remove all</button>`}</div></div>`;
+  return h;
+}
+function vCheck(){
+  if(editing) return editForm(editing);
+  const hard=S.customers.filter(blocked),soft=S.customers.filter(c=>!blocked(c)&&issues(c).length);
+  const row=c=>`<div class="li"><div class="who">${esc(c.name||"(no name)")}<small>${esc(c.note||"")}</small>${issues(c).map(x=>`<span class="issue ${x.block?"block":"soft"}">${esc(x.t)}</span>`).join("")}</div><button class="btn small primary" data-act="edit" data-id="${c.id}">Fix</button></div>`;
+  let h=`<div class="section"><div><h2>Needs checking<span class=zh>待检查</span></h2><p class="sub" style="margin:0">The app never guesses a name or birthday. Fix these and they'll get reminders.</p></div>`;
+  h+=hard.length?`<p class="label">Won't get reminders until fixed (${hard.length})</p><div class="list">${hard.map(row).join("")}</div>`:`<div class="banner ok"><div class="grow">Every customer has a readable name and birthday.</div></div>`;
+  if(soft.length) h+=`<p class="label">Missing contact details (${soft.length}) · still reminded</p><div class="list">${soft.map(row).join("")}</div>`;
+  return h+"</div>";
+}
+function vSettings(){
+  const s=S.settings;
+  return `<form class="panel" id="setForm"><h2>Settings<span class=zh>设置</span></h2>
+  <div class="form">
+    <label>Your name (used when a customer has no account manager)<input id="s-sender" value="${esc(s.senderName)}" placeholder="e.g. Ang Siaw Peng"></label>
+    <label>Company name (English)<input id="s-coen" value="${esc(s.companyEn)}" placeholder="e.g. your company"></label>
+    <label>Company name (中文)<input id="s-cocn" class="cn" value="${esc(s.companyCn)}"></label>
+    <label>Country code for local numbers<input id="s-cc" inputmode="numeric" value="${esc(s.countryCode)}" placeholder="60"></label>
+    <label>Show birthdays this many days before 提前几天<input id="s-days" type="number" min="0" max="14" value="${esc(s.remindDays)}"></label>
+    <label>Birthday format in your files<select id="s-fmt"><option value="DMY" ${s.dateFormat==="DMY"?"selected":""}>Day/Month/Year (14/12/1987)</option><option value="MDY" ${s.dateFormat==="MDY"?"selected":""}>Month/Day/Year (12/14/1987)</option></select></label>
+    <label>Default message language<select id="s-lang"><option value="both" ${s.defaultLang==="both"?"selected":""}>English + 中文</option><option value="en" ${s.defaultLang==="en"?"selected":""}>English</option><option value="cn" ${s.defaultLang==="cn"?"selected":""}>中文</option></select></label>
+    <label class="full">Test date: pretend today is… (leave empty for the real date)<input id="s-test" type="date" value="${esc(s.testDate)}"></label>
+  </div>
+  <div class="row"><button class="btn primary" type="submit">Save settings</button></div></form>`;
+}
+function vGuide(){
+  return `<div class="panel guide"><h2>How to use<span class=zh>使用说明</span></h2><ol>
+  <li><b>Load your customers.</b> Go to <i>Customers → Import list</i> and pick an Excel or CSV file with columns: Customer Name, Company, Birthday, Phone, Email, Account Manager. A photo or screenshot of a list works too. Check the preview, then tap <i>Replace my list</i>.</li>
+  <li><b>Fix anything flagged.</b> The <i>Needs checking</i> tab lists rows with a missing or unreadable birthday or name. They get no reminders until you fix them, so nobody receives a wrong greeting.</li>
+  <li><b>Every morning, open Send now.</b> It shows everyone whose birthday is today or in the next ${S.settings.remindDays} days, plus anyone missed in the last week.</li>
+  <li><b>Send.</b> Pick English, 中文 or both, edit the message if you like, tap <i>Save card image</i>, then <i>WhatsApp</i>. Check the details, tap <i>Open WhatsApp</i>, attach the card and press Send in WhatsApp. Come back and tap <i>Yes, mark as sent</i>.</li>
+  <li><b>Need a list?</b> <i>Download PDF list</i> gives a summary page plus one page per customer with the card, both messages and tap-to-send buttons.</li>
+  <li><b>Same list everywhere.</b> Your clients are saved to your Claude account, so phone and computer show the same list. The top right says <i>✓ Synced</i> when everything is saved. A backup download is still a good idea now and then.</li>
+  <li><b>Get reminders on your phone.</b> In <i>Upcoming</i>, tap <i>Add reminders to my calendar</i> and open the file. Your phone's calendar then alerts you 7 days before each birthday and at 9am on the day, every year. Do it again after adding new clients: only the new ones are added, nothing is doubled.</li></ol></div>`;
+}
+async function hydrateCards(){for(const img of document.querySelectorAll("img[data-card]")){const c=S.customers.find(x=>x.id===img.dataset.card);if(c)img.src=await cardDataUrl(c);}}
+function findC(id){return S.customers.find(c=>c.id===id);}
+
+document.addEventListener("click",async e=>{
+  const v=e.target.closest("[data-view]");if(v){view=v.dataset.view;editing=null;confirmSend=null;render();window.scrollTo(0,0);return;}
+  const a=e.target.closest("[data-act]");if(!a)return;const act=a.dataset.act,id=a.dataset.id,c=id&&findC(id),t=today();
+  switch(act){
+    case "import":$("#fileInput").value="";$("#fileInput").click();break;
+    case "lang":S.lang[id]=a.dataset.lang;delete S.drafts[id];save();render();break;
+    case "variant":S.variant[id]=(S.variant[id]||0)+1;delete S.drafts[id];save();render();break;
+    case "send":confirmSend={id,via:a.dataset.via};opened[id]=false;render();document.getElementById("card-"+id).scrollIntoView({block:"nearest"});break;
+    case "cancelsend":confirmSend=null;render();break;
+    case "opened":opened[id]=true;setTimeout(render,300);break;
+    case "marksent":S.sent[id+"|"+a.dataset.year]=ymdStr(today());confirmSend=null;save();render();toast("Marked as sent");break;
+    case "unsent":delete S.sent[id+"|"+a.dataset.year];save();render();break;
+    case "copy":{const txt=document.getElementById("msg-"+id).value;try{await navigator.clipboard.writeText(txt);toast("Message copied");}catch(err){const ta=document.getElementById("msg-"+id);ta.focus();ta.select();toast("Selected: press Copy");}break;}
+    case "savecard":{const cv=(await ensureFonts(),drawCard(c));cv.toBlob(b=>saveFile("birthday-card-"+c.name.replace(/[^\w]+/g,"-").toLowerCase()+".png",b),"image/png");break;}
+    case "pdf":{const {due,missed}=sendList(t);const items=[...due.filter(d=>!d.sent),...missed];if(!items.length){toast("Everyone on the list is already marked as sent");break;}
+      a.disabled=true;a.textContent="Making PDF…";try{const blob=await buildPdf(items,t);await saveFile("birthday-list-"+ymdStr(t)+".pdf",blob);}catch(err){toast("Couldn't make the PDF: "+(err.message||err),6000);}a.disabled=false;a.textContent="Download PDF list";break;}
+    case "ics":{const r=buildIcs();if(!r.nb){toast("No clients with a birthday yet");break;}await saveFile("client-birthdays.ics",new Blob([r.text],{type:"text/calendar"}));toast(r.nb+" birthdays"+(r.np?" and "+r.np+" premium dates":"")+" ready: open the file to add them to your calendar",6000);break;}
+    case "apply":applyPending(a.dataset.mode);break;
+    case "cancelimport":pending=null;render();break;
+    case "add":editing={id:uid(),name:"",company:"",birthday:"",phone:"",email:"",manager:S.settings.senderName,verified:true,_new:true};render();break;
+    case "edit":e.preventDefault();editing=Object.assign({},c);if(view!=="check")view="customers";render();window.scrollTo(0,0);break;
+    case "canceledit":editing=null;render();break;
+    case "delete":confirmDel=id;render();break;
+    case "canceldel":confirmDel=null;render();break;
+    case "dodelete":S.customers=S.customers.filter(x=>x.id!==id);confirmDel=null;save();render();toast("Customer deleted");break;
+    case "clear":confirmClear=true;render();break;
+    case "cancelclear":confirmClear=false;render();break;
+    case "doclear":S.customers=[];S.isExample=false;confirmClear=false;save();render();toast("All customers removed");break;
+    case "backup":{const data={app:"customer-birthday-reminder",version:1,settings:S.settings,customers:S.customers,sent:S.sent};await saveFile("birthday-reminder-backup-"+ymdStr(new Date())+".json",new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));break;}
+    case "csv":{const head=["Customer Name","Company","Birthday","Phone","Email","Account Manager","Note"];const q=v=>'"'+String(v||"").replace(/"/g,'""')+'"';
+      const rows=S.customers.map(c=>{const b=bParts(c.birthday);return [c.name,c.company,b?pad(b.d)+"/"+pad(b.m)+(b.y?"/"+b.y:""):"",c.phone,c.email,c.manager,c.note].map(q).join(",");});
+      await saveFile("customers.csv",new Blob(["﻿"+head.join(",")+"\n"+rows.join("\n")],{type:"text/csv"}));break;}
+  }
+});
+document.addEventListener("input",e=>{
+  if(e.target.id==="search"){search=e.target.value;const pos=e.target.selectionStart;render();const s=$("#search");s.focus();s.setSelectionRange(pos,pos);}
+  if(e.target.dataset.msg){const id=e.target.dataset.msg,c=findC(id);S.drafts[id]={key:e.target.dataset.year+"|"+langOf(c),v:S.variant[id]||0,text:e.target.value};save();}
+});
+document.addEventListener("submit",e=>{
+  e.preventDefault();
+  if(e.target.id==="editForm"){
+    const name=titleCase($("#f-name").value);const full=$("#f-bday").value,dm=$("#f-bdm").value.trim();
+    let birthday="";
+    if(full){const [y,m,d]=full.split("-").map(Number);birthday=toBStr(y,m,d);}
+    else if(dm){const mm=/^(\d{1,2})[\/\-.](\d{1,2})$/.exec(dm);if(mm){const d=S.settings.dateFormat==="MDY"?+mm[2]:+mm[1],m=S.settings.dateFormat==="MDY"?+mm[1]:+mm[2];if(validMD(null,m,d))birthday=toBStr(null,m,d);}
+      if(!birthday){toast("Write the day and month like 14/12",4000);return;}}
+    if(!name){toast("Please enter the customer's name");return;}
+    const rec=Object.assign({},editing,{name,birthday,phone:$("#f-phone").value.trim(),email:$("#f-email").value.trim().toLowerCase(),company:$("#f-company").value.trim(),manager:titleCase($("#f-manager").value),verified:true});
+    const isNew=rec._new;delete rec._new;
+    if(!birthday) rec.note=rec.note||"Birthday not entered";
+    else if(rec.verified) rec.note=(rec.note||"").replace(/ ?- please.*$/i,"");
+    if(isNew){if(S.isExample){S.customers=[];S.isExample=false;}S.customers.push(rec);}else S.customers=S.customers.map(c=>c.id===rec.id?rec:c);
+    editing=null;cardCache.clear();save();render();toast(isNew?"Customer added":"Saved");
+  }
+  if(e.target.id==="setForm"){
+    const days=Math.max(0,Math.min(14,parseInt($("#s-days").value,10)||0));
+    S.settings=Object.assign(S.settings,{senderName:$("#s-sender").value.trim(),companyEn:$("#s-coen").value.trim(),companyCn:$("#s-cocn").value.trim(),countryCode:$("#s-cc").value.replace(/\D/g,""),remindDays:days,dateFormat:$("#s-fmt").value,defaultLang:$("#s-lang").value,testDate:$("#s-test").value});
+    S.drafts={};cardCache.clear();save();render();toast("Settings saved");
+  }
+});
+$("#fileInput").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];if(f)importFile(f);});
+
+S=loadState();
+render();
+initDb();
+ensureFonts().then(()=>{cardCache.clear();hydrateCards();});
+/* hooks for automated testing */
+window.CBR={get state(){return S;},setState(s){S=Object.assign({drafts:{},variant:{},lang:{},sent:{}},s);S.settings=Object.assign({},DEFAULT_SETTINGS,s.settings||{});render();},sendList:()=>sendList(today()),buildPdf:()=>{const t=today(),{due,missed}=sendList(t);return buildPdf([...due.filter(d=>!d.sent),...missed],t);},today,render,setView(v){view=v;render();},parseDateAny,cleanRecords,recordsFromRows,phoneInfo,messages,nextInfo,issues};
+})();
+</script>
+
+</body></html>
